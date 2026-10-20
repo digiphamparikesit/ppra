@@ -11,7 +11,7 @@
 
   <div id="app-layout"></div>
 
-  <main class="md:ml-64 p-4 md:p-8 pb-24 md:pb-8 min-h-screen">
+  <main class="md:ml-64 p-4 md:p-8 pb-24 md:pb-8 min-h-screen flex flex-col">
     
     <div class="mb-6 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
       <div>
@@ -43,8 +43,8 @@
     </div>
 
     <!-- Tabel Data -->
-    <div class="bg-white rounded-xl shadow-sm border border-green-100 overflow-hidden">
-      <div class="overflow-x-auto">
+    <div class="bg-white rounded-xl shadow-sm border border-green-100 overflow-hidden flex-1 flex flex-col">
+      <div class="overflow-x-auto flex-1">
         <table class="w-full text-left border-collapse">
           <thead>
             <tr class="bg-gray-50 border-b text-xs uppercase tracking-wider text-gray-500">
@@ -58,16 +58,19 @@
           </thead>
           <tbody id="tableBody" class="divide-y divide-gray-100 text-sm">
             <!-- Data akan diisi oleh JavaScript -->
-            <tr>
-              <td colspan="6" class="px-4 py-8 text-center text-gray-500">Memuat data...</td>
-            </tr>
           </tbody>
         </table>
       </div>
       
-      <!-- Info Paginasi (Sederhana) -->
-      <div class="p-4 border-t bg-gray-50 text-xs text-gray-500 flex justify-between items-center">
-        <span id="totalData">Total: 0 data</span>
+      <!-- Paginasi & Info Data -->
+      <div class="p-4 border-t bg-gray-50 flex flex-col md:flex-row justify-between items-center gap-4">
+        <span id="totalData" class="text-xs text-gray-500">Total: 0 data</span>
+        
+        <div class="flex items-center gap-2">
+          <button id="btnPrev" class="px-3 py-1 border border-gray-300 rounded bg-white text-gray-700 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed text-sm transition">Sebelumnya</button>
+          <span id="pageInfo" class="text-xs text-gray-600 font-medium px-2">Halaman 1 dari 1</span>
+          <button id="btnNext" class="px-3 py-1 border border-gray-300 rounded bg-white text-gray-700 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed text-sm transition">Selanjutnya</button>
+        </div>
       </div>
     </div>
 
@@ -78,7 +81,12 @@
   <script src="assets/js/layout.js"></script>
   <script>
     let userProfile = null;
-    let allData = []; // Menyimpan data di memori untuk pencarian lokal (cepat)
+    let allData = []; // Menyimpan semua data asli
+    let filteredData = []; // Menyimpan data setelah difilter (pencarian/tanggal)
+    
+    // Variabel Paginasi
+    const rowsPerPage = 15;
+    let currentPage = 1;
 
     // Jalankan saat halaman dimuat
     requireAuth().then((authData) => {
@@ -94,7 +102,6 @@
       const tbody = document.getElementById('tableBody');
       tbody.innerHTML = '<tr><td colspan="6" class="px-4 py-8 text-center text-gray-500">Memuat data...</td></tr>';
 
-      // Ambil data form_ppra beserta nama pembuatnya
       const { data, error } = await supabaseClient
         .from('form_ppra')
         .select(`
@@ -111,68 +118,80 @@
       }
 
       allData = data;
-      renderTable(allData);
-      document.getElementById('totalData').innerText = `Total: ${allData.length} data`;
+      applyFilter(); // Terapkan filter awal (tanpa kata kunci)
     }
 
-    // Fungsi merender tabel ke HTML
-    function renderTable(data) {
+    // Fungsi merender tabel berdasarkan halaman aktif
+    function renderTable() {
       const tbody = document.getElementById('tableBody');
-      if (data.length === 0) {
+      
+      // Hitung index awal dan akhir untuk halaman ini
+      const startIndex = (currentPage - 1) * rowsPerPage;
+      const endIndex = startIndex + rowsPerPage;
+      const paginatedData = filteredData.slice(startIndex, endIndex);
+
+      if (paginatedData.length === 0) {
         tbody.innerHTML = '<tr><td colspan="6" class="px-4 py-8 text-center text-gray-500">Tidak ada data ditemukan.</td></tr>';
-        return;
+      } else {
+        tbody.innerHTML = paginatedData.map(row => {
+          const tglInput = new Date(row.created_at).toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' });
+          
+          let badgeNotif = '';
+          if (row.status_notif === 'sent') badgeNotif = '<span class="bg-green-100 text-green-800 px-2 py-1 rounded text-xs font-semibold">Terkirim</span>';
+          else if (row.status_notif === 'failed') badgeNotif = '<span class="bg-red-100 text-red-800 px-2 py-1 rounded text-xs font-semibold">Gagal</span>';
+          else badgeNotif = '<span class="bg-gray-100 text-gray-800 px-2 py-1 rounded text-xs font-semibold">Pending</span>';
+
+          let catColor = row.antibiotik_kategori === 'Reserve' ? 'text-red-600 bg-red-50' : (row.antibiotik_kategori === 'Watch' ? 'text-yellow-600 bg-yellow-50' : 'text-green-600 bg-green-50');
+
+          return `
+            <tr class="hover:bg-gray-50 transition">
+              <td class="px-4 py-3 whitespace-nowrap">
+                <div class="font-medium text-gray-800">${tglInput}</div>
+                <div class="text-xs text-gray-500">Oleh: ${row.profiles?.nama_lengkap || '-'}</div>
+              </td>
+              <td class="px-4 py-3">
+                <div class="font-bold text-gray-800">${row.nama_pasien}</div>
+                <div class="text-xs text-gray-500">RM: ${row.no_rekam_medis}</div>
+              </td>
+              <td class="px-4 py-3 text-gray-600">${row.ruang_rawat_nama || '-'}</td>
+              <td class="px-4 py-3">
+                <div class="font-medium text-gray-800">${row.antibiotik_nama}</div>
+                <div class="text-xs inline-block px-1.5 py-0.5 rounded mt-1 font-semibold ${catColor}">${row.antibiotik_kategori}</div>
+              </td>
+              <td class="px-4 py-3">${badgeNotif}</td>
+              <td class="px-4 py-3 text-right space-x-2">
+                <button onclick="alert('Fitur detail akan dibuat di Part selanjutnya')" class="text-blue-600 hover:text-blue-800 text-xs font-medium">Detail</button>
+                <button onclick="alert('Fitur print akan dibuat di Part selanjutnya')" class="text-gray-600 hover:text-gray-800 text-xs font-medium">Print</button>
+              </td>
+            </tr>
+          `;
+        }).join('');
       }
 
-      tbody.innerHTML = data.map(row => {
-        // Format tanggal input
-        const tglInput = new Date(row.created_at).toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' });
-        
-        // Badge status notif
-        let badgeNotif = '';
-        if (row.status_notif === 'sent') badgeNotif = '<span class="bg-green-100 text-green-800 px-2 py-1 rounded text-xs font-semibold">Terkirim</span>';
-        else if (row.status_notif === 'failed') badgeNotif = '<span class="bg-red-100 text-red-800 px-2 py-1 rounded text-xs font-semibold">Gagal</span>';
-        else badgeNotif = '<span class="bg-gray-100 text-gray-800 px-2 py-1 rounded text-xs font-semibold">Pending</span>';
-
-        // Badge kategori antibiotik
-        let catColor = row.antibiotik_kategori === 'Reserve' ? 'text-red-600 bg-red-50' : (row.antibiotik_kategori === 'Watch' ? 'text-yellow-600 bg-yellow-50' : 'text-green-600 bg-green-50');
-
-        return `
-          <tr class="hover:bg-gray-50 transition">
-            <td class="px-4 py-3 whitespace-nowrap">
-              <div class="font-medium text-gray-800">${tglInput}</div>
-              <div class="text-xs text-gray-500">Oleh: ${row.profiles?.nama_lengkap || '-'}</div>
-            </td>
-            <td class="px-4 py-3">
-              <div class="font-bold text-gray-800">${row.nama_pasien}</div>
-              <div class="text-xs text-gray-500">RM: ${row.no_rekam_medis}</div>
-            </td>
-            <td class="px-4 py-3 text-gray-600">${row.ruang_rawat_nama || '-'}</td>
-            <td class="px-4 py-3">
-              <div class="font-medium text-gray-800">${row.antibiotik_nama}</div>
-              <div class="text-xs inline-block px-1.5 py-0.5 rounded mt-1 font-semibold ${catColor}">${row.antibiotik_kategori}</div>
-            </td>
-            <td class="px-4 py-3">${badgeNotif}</td>
-            <td class="px-4 py-3 text-right space-x-2">
-              <button onclick="alert('Fitur detail akan dibuat di Part selanjutnya')" class="text-blue-600 hover:text-blue-800 text-xs font-medium">Detail</button>
-              <button onclick="alert('Fitur print akan dibuat di Part selanjutnya')" class="text-gray-600 hover:text-gray-800 text-xs font-medium">Print</button>
-            </td>
-          </tr>
-        `;
-      }).join('');
+      updatePaginationUI();
     }
 
-    // Logika Pencarian & Filter Tanggal
+    // Fungsi memperbarui tampilan tombol paginasi
+    function updatePaginationUI() {
+      const totalPages = Math.ceil(filteredData.length / rowsPerPage) || 1;
+      
+      document.getElementById('pageInfo').innerText = `Halaman ${currentPage} dari ${totalPages}`;
+      document.getElementById('totalData').innerText = `Menampilkan ${filteredData.length} data (15 baris/hal)`;
+
+      document.getElementById('btnPrev').disabled = currentPage === 1;
+      document.getElementById('btnNext').disabled = currentPage >= totalPages;
+    }
+
+    // Logika Pencarian & Filter
     function applyFilter() {
       const keyword = document.getElementById('searchInput').value.toLowerCase();
       const start = document.getElementById('startDate').value;
       const end = document.getElementById('endDate').value;
 
-      const filtered = allData.filter(row => {
-        // 1. Filter Keyword (Nama atau RM)
+      filteredData = allData.filter(row => {
         const matchKeyword = row.nama_pasien.toLowerCase().includes(keyword) || 
                              row.no_rekam_medis.toLowerCase().includes(keyword);
         
-        // 2. Filter Tanggal (berdasarkan tanggal_permintaan)
         let matchDate = true;
         if (start) matchDate = matchDate && (row.tanggal_permintaan >= start);
         if (end) matchDate = matchDate && (row.tanggal_permintaan <= end);
@@ -180,14 +199,30 @@
         return matchKeyword && matchDate;
       });
 
-      renderTable(filtered);
-      document.getElementById('totalData').innerText = `Menampilkan: ${filtered.length} dari ${allData.length} data`;
+      currentPage = 1; // Reset ke halaman 1 setiap kali filter berubah
+      renderTable();
     }
 
-    // Event Listener untuk Input Pencarian & Tanggal
+    // Event Listener Pencarian & Filter
     document.getElementById('searchInput').addEventListener('input', applyFilter);
     document.getElementById('startDate').addEventListener('change', applyFilter);
     document.getElementById('endDate').addEventListener('change', applyFilter);
+
+    // Event Listener Tombol Paginasi
+    document.getElementById('btnPrev').addEventListener('click', () => {
+      if (currentPage > 1) {
+        currentPage--;
+        renderTable();
+      }
+    });
+
+    document.getElementById('btnNext').addEventListener('click', () => {
+      const totalPages = Math.ceil(filteredData.length / rowsPerPage);
+      if (currentPage < totalPages) {
+        currentPage++;
+        renderTable();
+      }
+    });
 
     // Tombol Reset
     document.getElementById('btnReset').addEventListener('click', () => {
