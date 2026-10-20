@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Laporan Form PPRA</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  
+  <style>
+    /* CSS KHUSUS UNTUK PRINT */
+    @media print {
+      @page { size: A4 landscape; margin: 10mm; }
+      body { background: white; -webkit-print-color-adjust: exact; }
+      .no-print { display: none !important; }
+      .print-only { display: block !important; }
+      main { margin-left: 0 !important; padding: 0 !important; }
+      
+      /* Gaya Tabel Print */
+      table { width: 100%; border-collapse: collapse; font-size: 8pt; }
+      th, td { border: 1px solid #000; padding: 3px 4px; vertical-align: top; }
+      th { background-color: #f0f0f0 !important; font-weight: bold; text-align: center; }
+      tr { page-break-inside: avoid; }
+    }
+  </style>
+</head>
+<body class="bg-green-50 text-gray-800">
+
+  <div id="app-layout" class="no-print"></div>
+
+  <main class="md:ml-64 p-4 md:p-8 pb-24 md:pb-8 min-h-screen">
+    
+    <!-- Header Kontrol (Hanya muncul di layar) -->
+    <div class="no-print mb-6 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+      <div>
+        <h2 class="text-2xl font-bold text-gray-800">Laporan Form PPRA</h2>
+        <p class="text-gray-500 text-sm">Pratinjau laporan untuk dicetak (Landscape)</p>
+      </div>
+      
+      <div class="flex gap-2">
+        <input type="month" id="filterBulan" class="px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-green-500">
+        <button onclick="window.print()" class="bg-green-600 hover:bg-green-700 text-white px-5 py-2 rounded-lg text-sm font-semibold shadow transition">
+          🖨️ Cetak Laporan
+        </button>
+      </div>
+    </div>
+
+    <!-- AREA CETAK (Yang akan muncul di kertas) -->
+    <div class="bg-white p-6 rounded-xl shadow-sm border border-green-100 print-only">
+      
+      <!-- Kop Laporan -->
+      <div class="text-center mb-6">
+        <h1 class="text-xl font-bold uppercase" id="judulLaporan">Form PPRA (Oktober 2026)</h1>
+        <p class="text-sm text-gray-600 mt-1">Laporan Penggunaan Antibiotik</p>
+        <hr class="border-t-2 border-black mt-4">
+      </div>
+
+      <!-- Tabel Laporan -->
+      <div class="overflow-x-auto">
+        <table>
+          <thead>
+            <tr>
+              <th style="width: 3%;">No</th>
+              <th style="width: 8%;">Tgl Permintaan</th>
+              <th style="width: 12%;">Nama Pasien / RM</th>
+              <th style="width: 8%;">Ruangan</th>
+              <th style="width: 10%;">DPJP</th>
+              <th style="width: 12%;">Antibiotik & Dosis</th>
+              <th style="width: 10%;">Diagnosis & Kondisi</th>
+              <th style="width: 8%;">Lab / Kultur</th>
+              <th style="width: 14%;">Justifikasi Reserve</th>
+              <th style="width: 10%;">Apoteker</th>
+            </tr>
+          </thead>
+          <tbody id="printTableBody">
+            <!-- Data akan diisi JS -->
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Footer Tanda Tangan -->
+      <div class="mt-10 flex justify-between text-sm">
+        <div class="text-center">
+          <p>Mengetahui,</p>
+          <p class="mb-16">Kepala Instalasi Farmasi</p>
+          <p class="font-bold underline">( ......................................... )</p>
+        </div>
+        <div class="text-center">
+          <p>Tanggal Cetak: <span id="tglCetak"></span></p>
+          <p class="mb-16">Apoteker Penanggung Jawab</p>
+          <p class="font-bold underline">( ......................................... )</p>
+        </div>
+      </div>
+
+    </div>
+  </main>
+
+  <script src="assets/js/supabase-client.js"></script>
+  <script src="assets/js/auth.js"></script>
+  <script src="assets/js/layout.js"></script>
+  <script>
+    let userProfile = null;
+
+    // Jalankan saat halaman dimuat
+    requireAuth().then((authData) => {
+      if (authData) {
+        userProfile = authData.profile;
+        renderLayout('laporan', userProfile.nama_lengkap, userProfile.role);
+        
+        // Set filter bulan ke bulan berjalan saat ini (format: YYYY-MM)
+        const now = new Date();
+        const currentMonth = now.toISOString().slice(0, 7);
+        document.getElementById('filterBulan').value = currentMonth;
+        
+        // Set tanggal cetak
+        document.getElementById('tglCetak').innerText = now.toLocaleDateString('id-ID', { day: '2-digit', month: 'long', year: 'numeric' });
+        
+        // Muat data
+        loadLaporanData();
+      }
+    });
+
+    // Event listener saat bulan diganti
+    document.getElementById('filterBulan').addEventListener('change', () => {
+      loadLaporanData();
+    });
+
+    async function loadLaporanData() {
+      const tbody = document.getElementById('printTableBody');
+      tbody.innerHTML = '<tr><td colspan="10" class="text-center py-4">Memuat data...</td></tr>';
+
+      const filterBulan = document.getElementById('filterBulan').value; // YYYY-MM
+      if (!filterBulan) return;
+
+      const [tahun, bulan] = filterBulan.split('-');
+      
+      // Ubah Judul Laporan
+      const namaBulan = new Date(tahun, bulan - 1, 1).toLocaleDateString('id-ID', { month: 'long', year: 'numeric' });
+      document.getElementById('judulLaporan').innerText = `Form PPRA (${namaBulan})`;
+
+      // Buat rentang tanggal awal dan akhir bulan
+      const tglAwal = `${filterBulan}-01`;
+      const lastDay = new Date(tahun, bulan, 0).getDate();
+      const tglAkhir = `${filterBulan}-${lastDay.toString().padStart(2, '0')}`;
+
+      // Query ke Supabase
+      const { data, error } = await supabaseClient
+        .from('form_ppra')
+        .select(`
+          tanggal_permintaan, nama_pasien, no_rekam_medis, ruang_rawat_nama, dpjp_nama,
+          antibiotik_nama, antibiotik_kategori, dosis_rute, rencana_lama_hari,
+          diagnosis_infeksi, kondisi_klinis, hasil_lab, hasil_kultur, justifikasi_reserve,
+          created_by_nama
+        `)
+        .gte('tanggal_permintaan', tglAwal)
+        .lte('tanggal_permintaan', tglAkhir)
+        .order('tanggal_permintaan', { ascending: true });
+
+      if (error) {
+        tbody.innerHTML = `<tr><td colspan="10" class="text-center text-red-500 py-4">Gagal memuat: ${error.message}</td></tr>`;
+        return;
+      }
+
+      if (data.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="10" class="text-center py-4 text-gray-500">Tidak ada data di bulan ini.</td></tr>';
+        return;
+      }
+
+      // Render baris tabel
+      tbody.innerHTML = data.map((row, index) => {
+        const tgl = new Date(row.tanggal_permintaan).toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' });
+        
+        return `
+          <tr>
+            <td class="text-center">${index + 1}</td>
+            <td class="text-center">${tgl}</td>
+            <td>
+              <strong>${row.nama_pasien}</strong><br>
+              <span style="font-size: 7pt;">RM: ${row.no_rekam_medis}</span>
+            </td>
+            <td>${row.ruang_rawat_nama || '-'}</td>
+            <td>${row.dpjp_nama || '-'}</td>
+            <td>
+              <strong>${row.antibiotik_nama}</strong> <br>
+              <span style="font-size: 7pt;">(${row.antibiotik_kategori})<br>${row.dosis_rute} <br>Rencana: ${row.rencana_lama_hari || '-'} hari</span>
+            </td>
+            <td>
+              ${row.diagnosis_infeksi || '-'}<br>
+              <span style="font-size: 7pt;">${row.kondisi_klinis || ''}</span>
+            </td>
+            <td>
+              <span style="font-size: 7pt;">Lab: ${row.hasil_lab || '-'}</span><br>
+              <span style="font-size: 7pt;">Kultur: ${row.hasil_kultur || '-'}</span>
+            </td>
+            <td style="font-size: 7pt;">${row.justifikasi_reserve || '-'}</td>
+            <td style="font-size: 7pt;">${row.created_by_nama || '-'}</td>
+          </tr>
+        `;
+      }).join('');
+    }
+  </script>
+</body>
+</html>
