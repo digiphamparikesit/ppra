@@ -176,18 +176,25 @@
           // (Field 'kelengkapan_wajib' dan 'konsistensi' dilewati dulu untuk simplifikasi)
         ).toFixed(2);
 
-        return {
-          id: p.id,
-          nama: p.nama_lengkap,
-          totalInput,
-          totalJustifikasi,
-          totalKultur,
-          pctJustifikasi,
-          pctKultur,
-          skorAkhir: parseFloat(skorAkhir)
-        };
-      });
+         // Logika: Jika nama_lengkap berisi email (ada '@'), potong dan jadikan huruf kapital di awal
+      let namaTampil = p.nama_lengkap;
+      if (namaTampil && namaTampil.includes('@')) {
+        namaTampil = namaTampil.split('@')[0];
+        namaTampil = namaTampil.charAt(0).toUpperCase() + namaTampil.slice(1);
+      }
 
+      return {
+        id: p.id,
+        nama: namaTampil || 'Tanpa Nama',
+        totalInput,
+        totalJustifikasi,
+        totalKultur,
+        pctJustifikasi,
+        pctKultur,
+        skorAkhir: parseFloat(skorAkhir)
+      };
+    });
+     
       // Urutkan berdasarkan Skor Akhir (Descending)
       resultData.sort((a, b) => b.skorAkhir - a.skorAkhir);
 
