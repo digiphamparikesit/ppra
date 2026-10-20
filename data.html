@@ -6,12 +6,29 @@
   <title>Data Pasien - Form PPRA</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  
+  <style>
+    /* CSS KHUSUS PRINT 1 DATA */
+    @media print {
+      @page { size: A4 landscape; margin: 10mm; }
+      body * { visibility: hidden; } /* Sembunyikan semua elemen */
+      #printArea, #printArea * { visibility: visible; } /* Munculkan hanya area print */
+      #printArea { position: absolute; left: 0; top: 0; width: 100%; background: white; }
+      
+      .no-print { display: none !important; }
+      
+      /* Gaya Tabel Print */
+      .print-table { width: 100%; border-collapse: collapse; font-size: 10pt; font-family: sans-serif; }
+      .print-table th, .print-table td { border: 1px solid #000; padding: 6px; vertical-align: top; }
+      .print-table th { background-color: #f0f0f0 !important; font-weight: bold; width: 25%; text-align: left; }
+    }
+  </style>
 </head>
 <body class="bg-green-50 text-gray-800">
 
-  <div id="app-layout"></div>
+  <div id="app-layout" class="no-print"></div>
 
-  <main class="md:ml-64 p-4 md:p-8 pb-24 md:pb-8 min-h-screen flex flex-col">
+  <main class="md:ml-64 p-4 md:p-8 pb-24 md:pb-8 min-h-screen flex flex-col no-print">
     
     <div class="mb-6 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
       <div>
@@ -57,15 +74,14 @@
             </tr>
           </thead>
           <tbody id="tableBody" class="divide-y divide-gray-100 text-sm">
-            <!-- Data akan diisi oleh JavaScript -->
+            <!-- Data diisi JS -->
           </tbody>
         </table>
       </div>
       
-      <!-- Paginasi & Info Data -->
+      <!-- Paginasi -->
       <div class="p-4 border-t bg-gray-50 flex flex-col md:flex-row justify-between items-center gap-4">
         <span id="totalData" class="text-xs text-gray-500">Total: 0 data</span>
-        
         <div class="flex items-center gap-2">
           <button id="btnPrev" class="px-3 py-1 border border-gray-300 rounded bg-white text-gray-700 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed text-sm transition">Sebelumnya</button>
           <span id="pageInfo" class="text-xs text-gray-600 font-medium px-2">Halaman 1 dari 1</span>
@@ -76,19 +92,71 @@
 
   </main>
 
+  <!-- ========================================== -->
+  <!-- MODAL DETAIL PASIEN                        -->
+  <!-- ========================================== -->
+  <div id="modalDetail" class="fixed inset-0 bg-black bg-opacity-50 z-[100] hidden items-center justify-center p-4 no-print">
+    <div class="bg-white rounded-xl shadow-xl w-full max-w-4xl max-h-[90vh] flex flex-col">
+      
+      <!-- Header Modal -->
+      <div class="px-6 py-4 border-b flex justify-between items-center bg-green-700 text-white rounded-t-xl">
+        <h3 class="text-lg font-bold">Detail Form PPRA</h3>
+        <button onclick="tutupModal()" class="text-2xl leading-none hover:text-gray-200">&times;</button>
+      </div>
+
+      <!-- Body Modal (Scrollable) -->
+      <div class="p-6 overflow-y-auto flex-1 space-y-4 text-sm" id="modalContent">
+        <!-- Konten diisi JS -->
+      </div>
+
+      <!-- Footer Modal -->
+      <div class="px-6 py-4 border-t bg-gray-50 flex justify-end gap-3 rounded-b-xl">
+        <button onclick="tutupModal()" class="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-100 transition">Tutup</button>
+        <button id="btnPrintSingle" class="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg font-semibold shadow transition flex items-center gap-2">
+          🖨️ Cetak Data Ini
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ========================================== -->
+  <!-- AREA KHUSUS PRINT 1 DATA (Tersembunyi)     -->
+  <!-- ========================================== -->
+  <div id="printArea" class="hidden">
+    <div class="text-center mb-6">
+      <h1 class="text-xl font-bold uppercase">Form PPRA (Single Entry)</h1>
+      <p class="text-sm text-gray-600 mt-1">Laporan Penggunaan Antibiotik</p>
+      <hr class="border-t-2 border-black mt-4">
+    </div>
+    <table class="print-table" id="printTableSingle">
+      <!-- Diisi JS -->
+    </table>
+    <div class="mt-10 flex justify-between text-sm">
+      <div class="text-center">
+        <p>Apoteker Pemberi Informasi,</p>
+        <p class="mb-16 mt-16"></p>
+        <p class="font-bold underline" id="printApoteker"></p>
+      </div>
+      <div class="text-center">
+        <p>Mengetahui,</p>
+        <p>DPJP Terkait,</p>
+        <p class="mb-16 mt-6"></p>
+        <p class="font-bold underline" id="printDpjp"></p>
+      </div>
+    </div>
+  </div>
+
   <script src="assets/js/supabase-client.js"></script>
   <script src="assets/js/auth.js"></script>
   <script src="assets/js/layout.js"></script>
   <script>
     let userProfile = null;
-    let allData = []; // Menyimpan semua data asli
-    let filteredData = []; // Menyimpan data setelah difilter (pencarian/tanggal)
-    
-    // Variabel Paginasi
-    const rowsPerPage = 15;
+    let allData = [];
+    let filteredData = [];
     let currentPage = 1;
+    const rowsPerPage = 15;
+    let selectedData = null; // Menyimpan data yang sedang dibuka di modal
 
-    // Jalankan saat halaman dimuat
     requireAuth().then((authData) => {
       if (authData) {
         userProfile = authData.profile;
@@ -97,35 +165,27 @@
       }
     });
 
-    // Fungsi mengambil data dari Supabase
     async function fetchData() {
       const tbody = document.getElementById('tableBody');
       tbody.innerHTML = '<tr><td colspan="6" class="px-4 py-8 text-center text-gray-500">Memuat data...</td></tr>';
 
+      // Tarik SEMUA kolom yang dibutuhkan untuk detail dan print
       const { data, error } = await supabaseClient
         .from('form_ppra')
-        .select(`
-          id, created_at, tanggal_permintaan, nama_pasien, no_rekam_medis, 
-          ruang_rawat_nama, antibiotik_nama, antibiotik_kategori, status_notif,
-          profiles (nama_lengkap)
-        `)
+        .select('*') 
         .order('created_at', { ascending: false });
 
       if (error) {
-        console.error(error);
         tbody.innerHTML = `<tr><td colspan="6" class="px-4 py-8 text-center text-red-500">Gagal memuat data: ${error.message}</td></tr>`;
         return;
       }
 
       allData = data;
-      applyFilter(); // Terapkan filter awal (tanpa kata kunci)
+      applyFilter();
     }
 
-    // Fungsi merender tabel berdasarkan halaman aktif
     function renderTable() {
       const tbody = document.getElementById('tableBody');
-      
-      // Hitung index awal dan akhir untuk halaman ini
       const startIndex = (currentPage - 1) * rowsPerPage;
       const endIndex = startIndex + rowsPerPage;
       const paginatedData = filteredData.slice(startIndex, endIndex);
@@ -147,7 +207,7 @@
             <tr class="hover:bg-gray-50 transition">
               <td class="px-4 py-3 whitespace-nowrap">
                 <div class="font-medium text-gray-800">${tglInput}</div>
-                <div class="text-xs text-gray-500">Oleh: ${row.profiles?.nama_lengkap || '-'}</div>
+                <div class="text-xs text-gray-500">Oleh: ${row.created_by_nama || '-'}</div>
               </td>
               <td class="px-4 py-3">
                 <div class="font-bold text-gray-800">${row.nama_pasien}</div>
@@ -159,30 +219,25 @@
                 <div class="text-xs inline-block px-1.5 py-0.5 rounded mt-1 font-semibold ${catColor}">${row.antibiotik_kategori}</div>
               </td>
               <td class="px-4 py-3">${badgeNotif}</td>
-              <td class="px-4 py-3 text-right space-x-2">
-                <button onclick="alert('Fitur detail akan dibuat di Part selanjutnya')" class="text-blue-600 hover:text-blue-800 text-xs font-medium">Detail</button>
-                <button onclick="alert('Fitur print akan dibuat di Part selanjutnya')" class="text-gray-600 hover:text-gray-800 text-xs font-medium">Print</button>
+              <td class="px-4 py-3 text-right space-x-3">
+                <button onclick="bukaModal('${row.id}')" class="text-blue-600 hover:text-blue-800 text-xs font-bold">Detail</button>
+                <button onclick="bukaModal('${row.id}', true)" class="text-green-600 hover:text-green-800 text-xs font-bold">Print</button>
               </td>
             </tr>
           `;
         }).join('');
       }
-
       updatePaginationUI();
     }
 
-    // Fungsi memperbarui tampilan tombol paginasi
     function updatePaginationUI() {
       const totalPages = Math.ceil(filteredData.length / rowsPerPage) || 1;
-      
       document.getElementById('pageInfo').innerText = `Halaman ${currentPage} dari ${totalPages}`;
       document.getElementById('totalData').innerText = `Menampilkan ${filteredData.length} data (15 baris/hal)`;
-
       document.getElementById('btnPrev').disabled = currentPage === 1;
       document.getElementById('btnNext').disabled = currentPage >= totalPages;
     }
 
-    // Logika Pencarian & Filter
     function applyFilter() {
       const keyword = document.getElementById('searchInput').value.toLowerCase();
       const start = document.getElementById('startDate').value;
@@ -191,45 +246,126 @@
       filteredData = allData.filter(row => {
         const matchKeyword = row.nama_pasien.toLowerCase().includes(keyword) || 
                              row.no_rekam_medis.toLowerCase().includes(keyword);
-        
         let matchDate = true;
         if (start) matchDate = matchDate && (row.tanggal_permintaan >= start);
         if (end) matchDate = matchDate && (row.tanggal_permintaan <= end);
-
         return matchKeyword && matchDate;
       });
 
-      currentPage = 1; // Reset ke halaman 1 setiap kali filter berubah
+      currentPage = 1;
       renderTable();
     }
 
-    // Event Listener Pencarian & Filter
     document.getElementById('searchInput').addEventListener('input', applyFilter);
     document.getElementById('startDate').addEventListener('change', applyFilter);
     document.getElementById('endDate').addEventListener('change', applyFilter);
-
-    // Event Listener Tombol Paginasi
-    document.getElementById('btnPrev').addEventListener('click', () => {
-      if (currentPage > 1) {
-        currentPage--;
-        renderTable();
-      }
-    });
-
-    document.getElementById('btnNext').addEventListener('click', () => {
-      const totalPages = Math.ceil(filteredData.length / rowsPerPage);
-      if (currentPage < totalPages) {
-        currentPage++;
-        renderTable();
-      }
-    });
-
-    // Tombol Reset
+    document.getElementById('btnPrev').addEventListener('click', () => { if (currentPage > 1) { currentPage--; renderTable(); } });
+    document.getElementById('btnNext').addEventListener('click', () => { const totalPages = Math.ceil(filteredData.length / rowsPerPage); if (currentPage < totalPages) { currentPage++; renderTable(); } });
     document.getElementById('btnReset').addEventListener('click', () => {
       document.getElementById('searchInput').value = '';
       document.getElementById('startDate').value = '';
       document.getElementById('endDate').value = '';
       applyFilter();
+    });
+
+    // ==========================================
+    // LOGIKA MODAL DETAIL & PRINT
+    // ==========================================
+    
+    function bukaModal(id, langsungPrint = false) {
+      // Cari data berdasarkan ID
+      selectedData = allData.find(d => d.id === id);
+      if (!selectedData) return;
+
+      if (langsungPrint) {
+        // Jika tombol Print langsung diklik dari tabel
+        siapkanPrintSingle();
+        window.print();
+      } else {
+        // Jika tombol Detail diklik, tampilkan Modal
+        renderModalContent(selectedData);
+        document.getElementById('modalDetail').classList.remove('hidden');
+        document.getElementById('modalDetail').classList.add('flex');
+      }
+    }
+
+    function tutupModal() {
+      document.getElementById('modalDetail').classList.add('hidden');
+      document.getElementById('modalDetail').classList.remove('flex');
+      selectedData = null;
+    }
+
+    // Isi konten HTML di dalam modal
+    function renderModalContent(d) {
+      const tgl = new Date(d.tanggal_permintaan).toLocaleDateString('id-ID', { day: '2-digit', month: 'long', year: 'numeric' });
+      
+      document.getElementById('modalContent').innerHTML = `
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <!-- Kolom Kiri -->
+          <div class="space-y-3">
+            <h4 class="font-bold text-green-700 border-b pb-1">Identitas Pasien</h4>
+            <div><span class="text-gray-500 block text-xs">Nama Pasien</span> <strong>${d.nama_pasien}</strong></div>
+            <div><span class="text-gray-500 block text-xs">No. Rekam Medis</span> ${d.no_rekam_medis}</div>
+            <div><span class="text-gray-500 block text-xs">Ruangan</span> ${d.ruang_rawat_nama}</div>
+            <div><span class="text-gray-500 block text-xs">DPJP</span> ${d.dpjp_nama}</div>
+            <div><span class="text-gray-500 block text-xs">Tanggal Permintaan</span> ${tgl}</div>
+            
+            <h4 class="font-bold text-green-700 border-b pb-1 mt-4">Data Antibiotik</h4>
+            <div><span class="text-gray-500 block text-xs">Antibiotik</span> <strong>${d.antibiotik_nama}</strong> (${d.antibiotik_kategori})</div>
+            <div><span class="text-gray-500 block text-xs">Dosis & Rute</span> ${d.dosis_rute}</div>
+            <div><span class="text-gray-500 block text-xs">Rencana Lama</span> ${d.rencana_lama_hari || '-'} hari</div>
+          </div>
+
+          <!-- Kolom Kanan -->
+          <div class="space-y-3">
+            <h4 class="font-bold text-green-700 border-b pb-1">Data Klinis</h4>
+            <div><span class="text-gray-500 block text-xs">Diagnosis</span> ${d.diagnosis_infeksi || '-'}</div>
+            <div><span class="text-gray-500 block text-xs">Kondisi Klinis</span> ${d.kondisi_klinis || '-'}</div>
+            <div><span class="text-gray-500 block text-xs">Skor SOFA/qSOFA</span> ${d.skor_sofa || '-'}</div>
+            <div><span class="text-gray-500 block text-xs">Disfungsi Organ</span> ${d.disfungsi_organ || '-'}</div>
+            <div><span class="text-gray-500 block text-xs">Hasil Lab</span> ${d.hasil_lab || '-'}</div>
+            <div><span class="text-gray-500 block text-xs">Hasil Kultur</span> ${d.hasil_kultur || '-'}</div>
+            
+            <h4 class="font-bold text-green-700 border-b pb-1 mt-4">Indikasi & Justifikasi</h4>
+            <div><span class="text-gray-500 block text-xs">Indikasi</span> ${d.indikasi || '-'}</div>
+            <div><span class="text-gray-500 block text-xs">Alasan MDRO</span> ${d.alasan_mdro || '-'}</div>
+            <div><span class="text-gray-500 block text-xs">Riwayat Antibiotik</span> ${d.riwayat_antibiotik || '-'}</div>
+            <div><span class="text-gray-500 block text-xs">Justifikasi Reserve</span> <span class="text-red-700 font-medium">${d.justifikasi_reserve || '-'}</span></div>
+          </div>
+        </div>
+      `;
+    }
+
+    // Menyiapkan tabel khusus untuk print 1 data
+    function siapkanPrintSingle() {
+      if (!selectedData) return;
+      const d = selectedData;
+      const tgl = new Date(d.tanggal_permintaan).toLocaleDateString('id-ID', { day: '2-digit', month: 'long', year: 'numeric' });
+
+      document.getElementById('printTableSingle').innerHTML = `
+        <tr><th>Nama Pasien</th><td>${d.nama_pasien}</td><th>No. Rekam Medis</th><td>${d.no_rekam_medis}</td></tr>
+        <tr><th>Ruangan</th><td>${d.ruang_rawat_nama}</td><th>DPJP</th><td>${d.dpjp_nama}</td></tr>
+        <tr><th>Tanggal Permintaan</th><td colspan="3">${tgl}</td></tr>
+        <tr><th>Antibiotik</th><td>${d.antibiotik_nama} (${d.antibiotik_kategori})</td><th>Dosis & Rute</th><td>${d.dosis_rute}</td></tr>
+        <tr><th>Rencana Lama</th><td>${d.rencana_lama_hari || '-'} hari</td><th>Indikasi</th><td>${d.indikasi}</td></tr>
+        <tr><th>Diagnosis Infeksi</th><td colspan="3">${d.diagnosis_infeksi}</td></tr>
+        <tr><th>Kondisi Klinis</th><td colspan="3">${d.kondisi_klinis || '-'}</td></tr>
+        <tr><th>Skor SOFA / Disfungsi Organ</th><td colspan="3">SOFA: ${d.skor_sofa || '-'} | Disfungsi: ${d.disfungsi_organ || '-'}</td></tr>
+        <tr><th>Hasil Laboratorium</th><td colspan="3">${d.hasil_lab || '-'}</td></tr>
+        <tr><th>Hasil Kultur</th><td colspan="3">${d.hasil_kultur || '-'}</td></tr>
+        <tr><th>Riwayat Antibiotik</th><td colspan="3">${d.riwayat_antibiotik || '-'}</td></tr>
+        <tr><th>Alasan MDRO</th><td colspan="3">${d.alasan_mdro || '-'}</td></tr>
+        <tr><th>Justifikasi Reserve</th><td colspan="3" style="color: #b91c1c; font-weight: bold;">${d.justifikasi_reserve || '-'}</td></tr>
+      `;
+
+      document.getElementById('printApoteker').innerText = d.created_by_nama || 'Apoteker';
+      document.getElementById('printDpjp').innerText = d.dpjp_nama || 'DPJP';
+    }
+
+    // Event listener untuk tombol print di dalam modal
+    document.getElementById('btnPrintSingle').addEventListener('click', () => {
+      siapkanPrintSingle();
+      window.print();
     });
   </script>
 </body>
