@@ -11,9 +11,22 @@
     /* CSS KHUSUS PRINT 1 DATA */
     @media print {
       @page { size: A4 landscape; margin: 10mm; }
-      body * { visibility: hidden; } /* Sembunyikan semua elemen */
-      #printArea, #printArea * { visibility: visible; } /* Munculkan hanya area print */
-      #printArea { position: absolute; left: 0; top: 0; width: 100%; background: white; }
+      
+      /* Sembunyikan semua elemen body */
+      body * { visibility: hidden; }
+      
+      /* Tampilkan HANYA area print dan isinya */
+      #printArea, #printArea * { visibility: visible; }
+      
+      /* Posisikan area print di pojok kiri atas kertas */
+      #printArea { 
+        position: absolute; 
+        left: 0; 
+        top: 0; 
+        width: 100%; 
+        background: white;
+        display: block !important;
+      }
       
       .no-print { display: none !important; }
       
@@ -155,7 +168,7 @@
     let filteredData = [];
     let currentPage = 1;
     const rowsPerPage = 15;
-    let selectedData = null; // Menyimpan data yang sedang dibuka di modal
+    let selectedData = null; 
 
     requireAuth().then((authData) => {
       if (authData) {
@@ -169,7 +182,6 @@
       const tbody = document.getElementById('tableBody');
       tbody.innerHTML = '<tr><td colspan="6" class="px-4 py-8 text-center text-gray-500">Memuat data...</td></tr>';
 
-      // Tarik SEMUA kolom yang dibutuhkan untuk detail dan print
       const { data, error } = await supabaseClient
         .from('form_ppra')
         .select('*') 
@@ -221,7 +233,7 @@
               <td class="px-4 py-3">${badgeNotif}</td>
               <td class="px-4 py-3 text-right space-x-3">
                 <button onclick="bukaModal('${row.id}')" class="text-blue-600 hover:text-blue-800 text-xs font-bold">Detail</button>
-                <button onclick="bukaModal('${row.id}', true)" class="text-green-600 hover:text-green-800 text-xs font-bold">Print</button>
+                <button onclick="cetakLangsung('${row.id}')" class="text-green-600 hover:text-green-800 text-xs font-bold">Print</button>
               </td>
             </tr>
           `;
@@ -272,21 +284,13 @@
     // LOGIKA MODAL DETAIL & PRINT
     // ==========================================
     
-    function bukaModal(id, langsungPrint = false) {
-      // Cari data berdasarkan ID
+    function bukaModal(id) {
       selectedData = allData.find(d => d.id === id);
       if (!selectedData) return;
 
-      if (langsungPrint) {
-        // Jika tombol Print langsung diklik dari tabel
-        siapkanPrintSingle();
-        window.print();
-      } else {
-        // Jika tombol Detail diklik, tampilkan Modal
-        renderModalContent(selectedData);
-        document.getElementById('modalDetail').classList.remove('hidden');
-        document.getElementById('modalDetail').classList.add('flex');
-      }
+      renderModalContent(selectedData);
+      document.getElementById('modalDetail').classList.remove('hidden');
+      document.getElementById('modalDetail').classList.add('flex');
     }
 
     function tutupModal() {
@@ -295,13 +299,24 @@
       selectedData = null;
     }
 
-    // Isi konten HTML di dalam modal
+    // Fungsi print dari tabel (langsung tanpa modal)
+    function cetakLangsung(id) {
+      selectedData = allData.find(d => d.id === id);
+      if (!selectedData) return;
+      
+      siapkanPrintSingle();
+      
+      // Gunakan setTimeout agar browser sempat merender isi tabel print
+      setTimeout(() => {
+        window.print();
+      }, 100);
+    }
+
     function renderModalContent(d) {
       const tgl = new Date(d.tanggal_permintaan).toLocaleDateString('id-ID', { day: '2-digit', month: 'long', year: 'numeric' });
       
       document.getElementById('modalContent').innerHTML = `
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <!-- Kolom Kiri -->
           <div class="space-y-3">
             <h4 class="font-bold text-green-700 border-b pb-1">Identitas Pasien</h4>
             <div><span class="text-gray-500 block text-xs">Nama Pasien</span> <strong>${d.nama_pasien}</strong></div>
@@ -315,8 +330,6 @@
             <div><span class="text-gray-500 block text-xs">Dosis & Rute</span> ${d.dosis_rute}</div>
             <div><span class="text-gray-500 block text-xs">Rencana Lama</span> ${d.rencana_lama_hari || '-'} hari</div>
           </div>
-
-          <!-- Kolom Kanan -->
           <div class="space-y-3">
             <h4 class="font-bold text-green-700 border-b pb-1">Data Klinis</h4>
             <div><span class="text-gray-500 block text-xs">Diagnosis</span> ${d.diagnosis_infeksi || '-'}</div>
@@ -336,7 +349,6 @@
       `;
     }
 
-    // Menyiapkan tabel khusus untuk print 1 data
     function siapkanPrintSingle() {
       if (!selectedData) return;
       const d = selectedData;
@@ -365,7 +377,11 @@
     // Event listener untuk tombol print di dalam modal
     document.getElementById('btnPrintSingle').addEventListener('click', () => {
       siapkanPrintSingle();
-      window.print();
+      tutupModal(); // Tutup modal dulu agar tidak menutupi hasil print
+      
+      setTimeout(() => {
+        window.print();
+      }, 150);
     });
   </script>
 </body>
