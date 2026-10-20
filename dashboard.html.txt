@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dashboard - Form PPRA</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body class="bg-green-50 text-gray-800">
+
+  <!-- Wadah untuk Sidebar & Navigasi -->
+  <div id="app-layout"></div>
+
+  <!-- KONTEN UTAMA -->
+  <!-- md:ml-64 agar konten bergeser ke kanan karena ada sidebar di desktop -->
+  <main class="md:ml-64 p-4 md:p-8 pb-20 md:pb-8 min-h-screen">
+    
+    <div class="mb-8 flex justify-between items-center">
+      <div>
+        <h2 class="text-2xl font-bold text-gray-800">Dashboard</h2>
+        <p class="text-gray-500 text-sm">Ringkasan data PPRA</p>
+      </div>
+      <div class="text-sm text-gray-500 bg-white px-3 py-1 rounded shadow-sm border" id="currentDate"></div>
+    </div>
+
+    <!-- Contoh Kartu Ringkasan -->
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+      <div class="bg-white p-5 rounded-xl shadow-sm border border-green-100">
+        <p class="text-gray-500 text-sm">Total Input Bulan Ini</p>
+        <h3 class="text-3xl font-bold text-green-700 mt-2">0</h3>
+      </div>
+      <div class="bg-white p-5 rounded-xl shadow-sm border border-green-100">
+        <p class="text-gray-500 text-sm">Antibiotik Reserve</p>
+        <h3 class="text-3xl font-bold text-green-700 mt-2">0</h3>
+      </div>
+      <div class="bg-white p-5 rounded-xl shadow-sm border border-green-100">
+        <p class="text-gray-500 text-sm">Notif WA Terkirim</p>
+        <h3 class="text-3xl font-bold text-green-700 mt-2">0</h3>
+      </div>
+    </div>
+
+    <div class="bg-white p-5 rounded-xl shadow-sm border border-green-100">
+      <h3 class="font-bold text-lg mb-4">Aktivitas Terbaru</h3>
+      <p class="text-sm text-gray-500 text-center py-8">Belum ada data inputan.</p>
+    </div>
+
+  </main>
+
+  <script src="assets/js/supabase-client.js"></script>
+  <script src="assets/js/auth.js"></script>
+  <script src="assets/js/layout.js"></script>
+  <script>
+    // Format tanggal hari ini
+    document.getElementById('currentDate').textContent = new Date().toLocaleDateString('id-ID', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+
+    // Cek Auth & Render Layout saat halaman dimuat
+    requireAuth().then((authData) => {
+      if (authData) {
+        const { profile } = authData;
+        // Render sidebar, bottom nav, dan profil user
+        renderLayout('dashboard', profile.nama_lengkap, profile.role);
+      }
+    });
+  </script>
+</body>
+</html>
