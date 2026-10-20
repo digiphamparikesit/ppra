@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Kinerja Apoteker - Form PPRA</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <!-- Library Chart.js untuk Grafik -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body class="bg-green-50 text-gray-800">
+
+  <div id="app-layout"></div>
+
+  <main class="md:ml-64 p-4 md:p-8 pb-24 md:pb-8 min-h-screen flex flex-col">
+    
+    <div class="mb-6 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+      <div>
+        <h2 class="text-2xl font-bold text-gray-800">Kinerja Apoteker</h2>
+        <p class="text-gray-500 text-sm">Evaluasi performa berdasarkan inputan Form PPRA</p>
+      </div>
+      
+      <!-- Filter Bulan -->
+      <div class="flex items-center gap-2 bg-white px-3 py-2 rounded-lg shadow-sm border border-green-100">
+        <label class="text-sm font-medium text-gray-600">Periode:</label>
+        <input type="month" id="filterBulan" class="text-sm border-none focus:ring-0 cursor-pointer bg-transparent outline-none">
+      </div>
+    </div>
+
+    <!-- Kartu Ringkasan KPI (Top 3) -->
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+      <div class="bg-white p-5 rounded-xl shadow-sm border border-green-100 border-l-4 border-l-blue-500">
+        <p class="text-gray-500 text-sm">Apoteker Terbaik (Skor)</p>
+        <h3 class="text-2xl font-bold text-gray-800 mt-1" id="topSkorName">-</h3>
+        <p class="text-blue-600 font-semibold text-sm mt-1" id="topSkorValue">0.00 Poin</p>
+      </div>
+      <div class="bg-white p-5 rounded-xl shadow-sm border border-green-100 border-l-4 border-l-green-500">
+        <p class="text-gray-500 text-sm">Input Terbanyak</p>
+        <h3 class="text-2xl font-bold text-gray-800 mt-1" id="topInputName">-</h3>
+        <p class="text-green-600 font-semibold text-sm mt-1" id="topInputValue">0 Form</p>
+      </div>
+      <div class="bg-white p-5 rounded-xl shadow-sm border border-green-100 border-l-4 border-l-purple-500">
+        <p class="text-gray-500 text-sm">Kelengkapan Justifikasi</p>
+        <h3 class="text-2xl font-bold text-gray-800 mt-1" id="topJustName">-</h3>
+        <p class="text-purple-600 font-semibold text-sm mt-1" id="topJustValue">0%</p>
+      </div>
+    </div>
+
+    <!-- Baris Grafik & Tabel -->
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
+      <!-- Grafik Batang (Top 5) -->
+      <div class="bg-white p-5 rounded-xl shadow-sm border border-green-100 lg:col-span-1">
+        <h3 class="font-bold text-gray-800 mb-4">Top 5 Input Terbanyak</h3>
+        <div class="relative h-64 w-full flex justify-center">
+          <canvas id="chartInput"></canvas>
+        </div>
+      </div>
+
+      <!-- Tabel Ranking -->
+      <div class="bg-white rounded-xl shadow-sm border border-green-100 lg:col-span-2 overflow-hidden flex flex-col">
+        <div class="p-5 border-b border-gray-100 flex justify-between items-center bg-gray-50">
+          <h3 class="font-bold text-gray-800">Peringkat & Skor Akhir</h3>
+          <span class="text-xs text-gray-500">Total 30 Apoteker</span>
+        </div>
+        <div class="overflow-x-auto flex-1 max-h-[400px]">
+          <table class="w-full text-left border-collapse">
+            <thead class="sticky top-0 bg-white shadow-sm z-10">
+              <tr class="text-xs uppercase tracking-wider text-gray-500 border-b">
+                <th class="px-4 py-3 font-medium text-center">Rank</th>
+                <th class="px-4 py-3 font-medium">Nama Apoteker</th>
+                <th class="px-4 py-3 font-medium text-center">Input</th>
+                <th class="px-4 py-3 font-medium text-center">Justifikasi</th>
+                <th class="px-4 py-3 font-medium text-center">Kultur</th>
+                <th class="px-4 py-3 font-medium text-center">Skor Akhir</th>
+              </tr>
+            </thead>
+            <tbody id="tableKinerja" class="divide-y divide-gray-100 text-sm">
+              <!-- Data diisi JS -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+  </main>
+
+  <script src="assets/js/supabase-client.js"></script>
+  <script src="assets/js/auth.js"></script>
+  <script src="assets/js/layout.js"></script>
+  <script>
+    let userProfile = null;
+    let myChart = null;
+
+    requireAuth().then((authData) => {
+      if (authData) {
+        userProfile = authData.profile;
+        renderLayout('kinerja', userProfile.nama_lengkap, userProfile.role);
+        
+        // Set bulan berjalan
+        const now = new Date();
+        document.getElementById('filterBulan').value = now.toISOString().slice(0, 7);
+        
+        loadDataKinerja();
+      }
+    });
+
+    document.getElementById('filterBulan').addEventListener('change', loadDataKinerja);
+
+    async function loadDataKinerja() {
+      const filterBulan = document.getElementById('filterBulan').value; // Format: YYYY-MM
+      if (!filterBulan) return;
+
+      const [tahun, bulan] = filterBulan.split('-');
+      const tglAwal = `${filterBulan}-01`;
+      const lastDay = new Date(tahun, bulan, 0).getDate();
+      const tglAkhir = `${filterBulan}-${lastDay.toString().padStart(2, '0')}`;
+
+      const tbody = document.getElementById('tableKinerja');
+      tbody.innerHTML = '<tr><td colspan="6" class="text-center py-8">Menghitung skor...</td></tr>';
+
+      // 1. Ambil semua data apoteker
+      const { data: profiles } = await supabaseClient
+        .from('profiles')
+        .select('id, nama_lengkap')
+        .eq('role', 'apoteker')
+        .eq('aktif', true);
+
+      // 2. Ambil data form_ppra di bulan tersebut
+      const { data: forms } = await supabaseClient
+        .from('form_ppra')
+        .select('created_by, hasil_kultur, justifikasi_reserve, status_notif, antibiotik_kategori')
+        .gte('tanggal_permintaan', tglAwal)
+        .lte('tanggal_permintaan', tglAkhir);
+
+      // 3. Ambil konfigurasi KPI dari database
+      const { data: kpiConfig } = await supabaseClient.from('kpi_config').select('*').eq('aktif', true);
+
+      // Jika data master kosong, hentikan proses
+      if (!profiles || !kpiConfig) {
+        tbody.innerHTML = '<tr><td colspan="6" class="text-center py-8 text-red-500">Data master (Profiles/KPI) tidak ditemukan.</td></tr>';
+        return;
+      }
+
+      // 4. Olah data (Hitung metrik per apoteker)
+      const kpiMap = {};
+      kpiConfig.forEach(k => kpiMap[k.kode] = k);
+      
+      let resultData = profiles.map(p => {
+        const userForms = forms ? forms.filter(f => f.created_by === p.id) : [];
+        
+        const totalInput = userForms.length;
+        const totalReserve = userForms.filter(f => f.antibiotik_kategori === 'Reserve').length;
+        const totalJustifikasi = userForms.filter(f => f.justifikasi_reserve && f.justifikasi_reserve.trim() !== '').length;
+        const totalKultur = userForms.filter(f => f.hasil_kultur && f.hasil_kultur.trim() !== '').length;
+        const totalNotif = userForms.filter(f => f.status_notif === 'sent').length;
+
+        // Hitung persentase
+        const pctJustifikasi = totalInput > 0 ? (totalJustifikasi / totalInput) * 100 : 0;
+        const pctKultur = totalInput > 0 ? (totalKultur / totalInput) * 100 : 0;
+        const pctNotif = totalInput > 0 ? (totalNotif / totalInput) * 100 : 0;
+
+        // Hitung Skor Komponen (Capped di 100%)
+        const skorInput = Math.min(100, (totalInput / (kpiMap['jumlah_input']?.target || 60)) * 100);
+        const skorJust = Math.min(100, (pctJustifikasi / (kpiMap['justifikasi_reserve']?.target || 100)) * 100);
+        const skorKultur = Math.min(100, (pctKultur / (kpiMap['ada_kultur']?.target || 80)) * 100);
+        const skorNotif = Math.min(100, (pctNotif / (kpiMap['notif_sukses']?.target || 98)) * 100);
+
+        // Hitung Skor Akhir (Terbobot)
+        // (Skor * Bobot) / 100
+        const skorAkhir = (
+          (skorInput * (kpiMap['jumlah_input']?.bobot || 30) / 100) +
+          (skorJust * (kpiMap['justifikasi_reserve']?.bobot || 15) / 100) +
+          (skorKultur * (kpiMap['ada_kultur']?.bobot || 15) / 100) +
+          (skorNotif * (kpiMap['notif_sukses']?.bobot || 10) / 100)
+          // (Field 'kelengkapan_wajib' dan 'konsistensi' dilewati dulu untuk simplifikasi)
+        ).toFixed(2);
+
+        return {
+          id: p.id,
+          nama: p.nama_lengkap,
+          totalInput,
+          totalJustifikasi,
+          totalKultur,
+          pctJustifikasi,
+          pctKultur,
+          skorAkhir: parseFloat(skorAkhir)
+        };
+      });
+
+      // Urutkan berdasarkan Skor Akhir (Descending)
+      resultData.sort((a, b) => b.skorAkhir - a.skorAkhir);
+
+      renderTabelKinerja(resultData);
+      renderRingkasan(resultData);
+      renderChart(resultData);
+    }
+
+    function renderTabelKinerja(data) {
+      const tbody = document.getElementById('tableKinerja');
+      
+      tbody.innerHTML = data.map((row, index) => {
+        // Warna badge rank
+        let rankColor = 'bg-gray-100 text-gray-600';
+        if (index === 0) rankColor = 'bg-yellow-100 text-yellow-800 font-bold'; // Emas
+        else if (index === 1) rankColor = 'bg-gray-200 text-gray-800 font-bold'; // Perak
+        else if (index === 2) rankColor = 'bg-orange-100 text-orange-800 font-bold'; // Perunggu
+
+        return `
+          <tr class="hover:bg-gray-50 transition">
+            <td class="px-4 py-3 text-center">
+              <span class="inline-block w-6 h-6 leading-6 rounded-full ${rankColor}">${index + 1}</span>
+            </td>
+            <td class="px-4 py-3 font-medium text-gray-800">${row.nama}</td>
+            <td class="px-4 py-3 text-center">${row.totalInput}</td>
+            <td class="px-4 py-3 text-center">${row.pctJustifikasi.toFixed(1)}%</td>
+            <td class="px-4 py-3 text-center">${row.pctKultur.toFixed(1)}%</td>
+            <td class="px-4 py-3 text-center font-bold text-green-700 text-lg">${row.skorAkhir}</td>
+          </tr>
+        `;
+      }).join('');
+    }
+
+    function renderRingkasan(data) {
+      if (data.length === 0) return;
+      
+      // Top Skor
+      document.getElementById('topSkorName').innerText = data[0].nama;
+      document.getElementById('topSkorValue').innerText = `${data[0].skorAkhir} Poin`;
+
+      // Top Input
+      const topInput = [...data].sort((a, b) => b.totalInput - a.totalInput)[0];
+      document.getElementById('topInputName').innerText = topInput.nama;
+      document.getElementById('topInputValue').innerText = `${topInput.totalInput} Form`;
+
+      // Top Justifikasi
+      const topJust = [...data].sort((a, b) => b.pctJustifikasi - a.pctJustifikasi)[0];
+      document.getElementById('topJustName').innerText = topJust.nama;
+      document.getElementById('topJustValue').innerText = `${topJust.pctJustifikasi.toFixed(1)}%`;
+    }
+
+    function renderChart(data) {
+      // Ambil Top 5 berdasarkan input terbanyak
+      const top5 = [...data].sort((a, b) => b.totalInput - a.totalInput).slice(0, 5);
+      
+      const labels = top5.map(d => d.nama.split(' ')[0]); // Ambil nama depan saja agar tidak kepanjangan
+      const values = top5.map(d => d.totalInput);
+
+      const ctx = document.getElementById('chartInput').getContext('2d');
+      
+      // Hancurkan chart lama jika ada (saat ganti bulan)
+      if (myChart) myChart.destroy();
+
+      myChart = new Chart(ctx, {
+        type: 'bar',
+        data: {
+          labels: labels,
+          datasets: [{
+            label: 'Jumlah Input',
+            data: values,
+            backgroundColor: '#16a34a', // Tailwind green-600
+            borderRadius: 4,
+            barThickness: 30
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { display: false }
+          },
+          scales: {
+            y: { beginAtZero: true, ticks: { stepSize: 1 } },
+            x: { grid: { display: false } }
+          }
+        }
+      });
+    }
+  </script>
+</body>
+</html>
