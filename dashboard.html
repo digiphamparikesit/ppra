@@ -9,12 +9,9 @@
 </head>
 <body class="bg-green-50 text-gray-800">
 
-  <!-- Wadah untuk Sidebar & Navigasi -->
   <div id="app-layout"></div>
 
-  <!-- KONTEN UTAMA -->
-  <!-- md:ml-64 agar konten bergeser ke kanan karena ada sidebar di desktop -->
-  <main class="md:ml-64 p-4 md:p-8 pb-20 md:pb-8 min-h-screen">
+  <main class="md:ml-64 p-4 md:p-8 pb-24 md:pb-8 min-h-screen">
     
     <div class="mb-8 flex justify-between items-center">
       <div>
@@ -24,25 +21,40 @@
       <div class="text-sm text-gray-500 bg-white px-3 py-1 rounded shadow-sm border" id="currentDate"></div>
     </div>
 
-    <!-- Contoh Kartu Ringkasan -->
+    <!-- Kartu Ringkasan -->
     <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
-      <div class="bg-white p-5 rounded-xl shadow-sm border border-green-100">
+      <div class="bg-white p-5 rounded-xl shadow-sm border border-green-100 border-l-4 border-l-green-500">
         <p class="text-gray-500 text-sm">Total Input Bulan Ini</p>
-        <h3 class="text-3xl font-bold text-green-700 mt-2">0</h3>
+        <h3 class="text-3xl font-bold text-gray-800 mt-2" id="totalInput">0</h3>
       </div>
-      <div class="bg-white p-5 rounded-xl shadow-sm border border-green-100">
+      <div class="bg-white p-5 rounded-xl shadow-sm border border-green-100 border-l-4 border-l-red-500">
         <p class="text-gray-500 text-sm">Antibiotik Reserve</p>
-        <h3 class="text-3xl font-bold text-green-700 mt-2">0</h3>
+        <h3 class="text-3xl font-bold text-gray-800 mt-2" id="totalReserve">0</h3>
       </div>
-      <div class="bg-white p-5 rounded-xl shadow-sm border border-green-100">
-        <p class="text-gray-500 text-sm">Notif WA Terkirim</p>
-        <h3 class="text-3xl font-bold text-green-700 mt-2">0</h3>
+      <div class="bg-white p-5 rounded-xl shadow-sm border border-green-100 border-l-4 border-l-blue-500">
+        <p class="text-gray-500 text-sm">Persentase Notif Terkirim</p>
+        <h3 class="text-3xl font-bold text-gray-800 mt-2" id="persenNotif">0%</h3>
       </div>
     </div>
 
+    <!-- Tabel Aktivitas Terbaru -->
     <div class="bg-white p-5 rounded-xl shadow-sm border border-green-100">
-      <h3 class="font-bold text-lg mb-4">Aktivitas Terbaru</h3>
-      <p class="text-sm text-gray-500 text-center py-8">Belum ada data inputan.</p>
+      <h3 class="font-bold text-lg mb-4 text-gray-800">Aktivitas Terbaru</h3>
+      <div class="overflow-x-auto">
+        <table class="w-full text-left border-collapse text-sm">
+          <thead>
+            <tr class="bg-gray-50 border-b text-xs uppercase text-gray-500">
+              <th class="px-4 py-3 font-medium">Tanggal</th>
+              <th class="px-4 py-3 font-medium">Pasien</th>
+              <th class="px-4 py-3 font-medium">Antibiotik</th>
+              <th class="px-4 py-3 font-medium">Oleh</th>
+            </tr>
+          </thead>
+          <tbody id="recentActivity" class="divide-y divide-gray-100">
+            <tr><td colspan="4" class="text-center py-8 text-gray-500">Memuat data...</td></tr>
+          </tbody>
+        </table>
+      </div>
     </div>
 
   </main>
@@ -51,17 +63,74 @@
   <script src="assets/js/auth.js"></script>
   <script src="assets/js/layout.js"></script>
   <script>
-    // Format tanggal hari ini
-    document.getElementById('currentDate').textContent = new Date().toLocaleDateString('id-ID', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+    let userProfile = null;
 
-    // Cek Auth & Render Layout saat halaman dimuat
-    requireAuth().then((authData) => {
+    requireAuth().then(async (authData) => {
       if (authData) {
-        const { profile } = authData;
-        // Render sidebar, bottom nav, dan profil user
-        renderLayout('dashboard', profile.nama_lengkap, profile.role);
+        userProfile = authData.profile;
+        renderLayout('dashboard', userProfile.nama_lengkap, userProfile.role);
+        
+        // Format tanggal hari ini
+        document.getElementById('currentDate').textContent = new Date().toLocaleDateString('id-ID', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+        
+        await loadDashboardData();
       }
     });
+
+    async function loadDashboardData() {
+      // 1. Tentukan rentang bulan ini
+      const now = new Date();
+      const tahun = now.getFullYear();
+      const bulan = String(now.getMonth() + 1).padStart(2, '0');
+      const tglAwal = `${tahun}-${bulan}-01`;
+      const lastDay = new Date(tahun, now.getMonth() + 1, 0).getDate();
+      const tglAkhir = `${tahun}-${bulan}-${lastDay}`;
+
+      // 2. Ambil data bulan ini
+      const { data, error } = await supabaseClient
+        .from('form_ppra')
+        .select('nama_pasien, antibiotik_kategori, status_notif, created_by_nama, created_at')
+        .gte('tanggal_permintaan', tglAwal)
+        .lte('tanggal_permintaan', tglAkhir)
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        console.error("Error load dashboard:", error);
+        return;
+      }
+
+      // 3. Hitung Metrik
+      const total = data.length;
+      const reserve = data.filter(d => d.antibiotik_kategori === 'Reserve').length;
+      const terkirim = data.filter(d => d.status_notif === 'sent').length;
+      const persen = total > 0 ? Math.round((terkirim / total) * 100) : 0;
+
+      document.getElementById('totalInput').innerText = total;
+      document.getElementById('totalReserve').innerText = reserve;
+      document.getElementById('persenNotif').innerText = persen + '%';
+
+      // 4. Render Aktivitas Terbaru (max 5 baris)
+      const tbody = document.getElementById('recentActivity');
+      const recent = data.slice(0, 5);
+
+      if (recent.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="4" class="text-center py-8 text-gray-500">Belum ada data inputan bulan ini.</td></tr>';
+      } else {
+        tbody.innerHTML = recent.map(row => {
+          const tgl = new Date(row.created_at).toLocaleDateString('id-ID', { day: '2-digit', month: 'short' });
+          return `
+            <tr class="hover:bg-gray-50 transition">
+              <td class="px-4 py-3 text-gray-600">${tgl}</td>
+              <td class="px-4 py-3 font-medium text-gray-800">${row.nama_pasien}</td>
+              <td class="px-4 py-3">
+                ${row.antibiotik_kategori === 'Reserve' ? '<span class="text-red-600 font-semibold">Reserve</span>' : row.antibiotik_kategori}
+              </td>
+              <td class="px-4 py-3 text-gray-500 text-xs">${row.created_by_nama || '-'}</td>
+            </tr>
+          `;
+        }).join('');
+      }
+    }
   </script>
 </body>
 </html>
