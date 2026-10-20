@@ -236,11 +236,59 @@
         alert("Gagal menyimpan data: " + error.message);
         btn.innerHTML = 'Simpan Data';
         btn.disabled = false;
-      } else {
-        // Jika berhasil
-        alert("Data berhasil disimpan! Notifikasi WA akan segera diproses.");
-        window.location.href = 'data.html'; // Arahkan ke halaman data
-      }
+        } else {
+        // Tampilkan loading karena akan menghubungi server Fonnte
+        btn.innerHTML = 'Mengirim Notifikasi WA...';
+
+        try {
+          // ---------------------------------------------------------
+          // KONFIGURASI FONNTE
+          // GANTI TOKEN DAN ID GRUP DI BAWAH INI
+          // ---------------------------------------------------------
+          const FONNTE_TOKEN = 'TOKEN_FONNTE_ANDA_DISINI'; 
+          const ID_GRUP_WA = '120363xxxxx@g.us'; // ID Grup dari dashboard Fonnte
+          
+          // Susun pesan WA
+          const pesan = `🔔 *FORM PPRA BARU*\n\n` +
+            `👤 Pasien: ${formData.nama_pasien}\n` +
+            `🏥 No. RM: ${formData.no_rekam_medis}\n` +
+            `🚪 Ruang: ${document.getElementById('ruang_rawat_id').options[document.getElementById('ruang_rawat_id').selectedIndex].text}\n` +
+            `👨‍⚕️ DPJP: ${document.getElementById('dpjp_id').options[document.getElementById('dpjp_id').selectedIndex].text}\n` +
+            `📅 Tanggal: ${formData.tanggal_permintaan}\n\n` +
+            `💊 Antibiotik: ${document.getElementById('antibiotik_id').options[document.getElementById('antibiotik_id').selectedIndex].text}\n` +
+            `💉 Dosis/Rute: ${formData.dosis_rute}\n` +
+            `⏱️ Rencana: ${formData.rencana_lama_hari || '-'} hari\n\n` +
+            `🦠 Diagnosis: ${formData.diagnosis_infeksi}\n` +
+            `📋 Indikasi: ${formData.indikasi}\n` +
+            `🧪 Kultur: ${formData.hasil_kultur || '-'}\n\n` +
+            `✍️ Diinput oleh: ${userProfile.nama_lengkap}\n\n` +
+            `⚠️ *Mohon diteruskan ke DPJP terkait untuk follow-up.*`;
+
+          // Tembak API Fonnte
+          const response = await fetch("https://api.fonnte.com/send", {
+            method: "POST",
+            headers: {
+              "Authorization": FONNTE_TOKEN,
+            },
+            body: new URLSearchParams({
+              target: ID_GRUP_WA,
+              message: pesan
+            })
+          });
+
+          const resData = await response.json();
+          console.log("Response Fonnte:", resData);
+
+        } catch (err) {
+          console.error("Gagal kirim WA:", err);
+          // Kita tidak menampilkan alert error WA agar user tidak panik, 
+          // data sudah masuk ke database kok.
+        }
+
+        // Setelah selesai kirim WA (atau jika gagal), alihkan ke halaman data
+        alert("Data berhasil disimpan! Notifikasi WA telah diproses.");
+        window.location.href = 'data.html';
+    
     });
   </script>
 </body>
